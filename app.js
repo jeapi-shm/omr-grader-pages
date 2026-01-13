@@ -42,31 +42,13 @@ const WARP_W = Math.round(WARP_H * (A4_W_MM / A4_H_MM));
 // ============================
 // UI state
 // ============================
-let answerKey = Array(25).fill(1);
-let allResults = []; // 누적 요약/CSV
+let answerKey = Array(25).fill(null);   // 초기엔 null로(입력 유효성 체크)
+let allResults = [];                    // 누적 요약/CSV
+let answerBlocks = ["", "", "", "", ""]; // 1~5,6~10,... 5개 블록
 
 // ============================
 // UI Helpers
 // ============================
-function renderAnswers(){
-  const grid = document.getElementById("answerGrid");
-  grid.innerHTML = "";
-  for(let i=0;i<25;i++){
-    const div = document.createElement("div");
-    div.className = "row";
-    div.innerHTML = `<b>${i+1}.</b> `;
-    for(let v=1; v<=5; v++){
-      const b = document.createElement("button");
-      b.textContent = v;
-      if(answerKey[i] === v) b.style.fontWeight = "900";
-      b.onclick = () => { answerKey[i] = v; renderAnswers(); updateSummaryPanel(); };
-      div.appendChild(b);
-    }
-    grid.appendChild(div);
-  }
-}
-renderAnswers();
-
 function pill(status){
   if(status === "GRADED") return `<span class="pill pill-ok">GRADED</span>`;
   if(status === "NEEDS_REVIEW") return `<span class="pill pill-warn">NEEDS_REVIEW</span>`;
@@ -95,6 +77,114 @@ function waitForOpenCV(){
   document.getElementById("cvStatus").innerHTML = `<span class="ok">OpenCV 로딩 완료 ✅</span>`;
   document.getElementById("gradeBtn").disabled = false;
 })();
+
+// ============================
+// Answer input (5문항 단위 문자열 입력)
+// ============================
+
+function isValidBlockText(s){
+  // 공백 허용(미입력), 입력 시엔 정확히 5자리 + 1~5만
+  if(!s) return true;
+  if(s.length !== 5) return false;
+  return /^[1-5]{5}$/.test(s);
+}
+
+function rebuildAnswerKeyFromBlocks(){
+  const key = [];
+  let ok = true;
+
+  for(let b=0;b<5;b++){
+    const s = (answerBlocks[b] || "").trim();
+    if(!s){
+      ok = false;
+      // 5개를 null로 채움
+      for(let i=0;i<5;i++) key.push(null);
+      continue;
+    }
+    if(!isValidBlockText(s)){
+      ok = false;
+      for(let i=0;i<5;i++) key.push(null);
+      continue;
+    }
+    for(let i=0;i<5;i++) key.push(parseInt(s[i], 10));
+  }
+
+  answerKey = key;
+  updateAnswerKeyText(ok);
+  return ok;
+}
+
+function updateAnswerKeyText(ok){
+  const textEl = document.getElementById("answerKeyText");
+  const validEl = document.getElementById("answerKeyValid");
+
+  const shown = answerKey.map(v => v == null ? "-" : String(v)).join("");
+  textEl.textContent = shown;
+
+  if(ok){
+    validEl.innerHTML = ` <span class="ok">✅ 입력 완료</span>`;
+  } else {
+    validEl.innerHTML = ` <span class="warn">⚠ 미입력/형식 오류 있음</span>`;
+  }
+}
+
+function renderAnswerBlocks(){
+  const host = document.getElementById("answerBlocks");
+  host.innerHTML = "";
+
+  const ranges = [
+    "1~5", "6~10", "11~15", "16~20", "21~25"
+  ];
+
+  ranges.forEach((label, idx) => {
+    const row = document.createElement("div");
+    row.className = "answer-block";
+
+    const l = document.createElement("div");
+    l.className = "answer-label";
+    l.textContent = `${label} :`;
+    row.appendChild(l);
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "예) 23213";
+    input.maxLength = 5;
+    input.value = answerBlocks[idx];
+
+    const status = document.createElement("span");
+    status.className = "small";
+
+    function refreshStatus(){
+      const v = input.value.trim();
+      if(!v){
+        status.innerHTML = `<span class="warn">미입력</span>`;
+      } else if(isValidBlockText(v)){
+        status.innerHTML = `<span class="ok">OK</span>`;
+      } else {
+        status.innerHTML = `<span class="bad">형식오류</span> (5자리, 1~5만)`;
+      }
+    }
+
+    input.addEventListener("input", () => {
+      // 숫자만 남기기(옵션): 0~9 이외 제거
+      input.value = input.value.replace(/[^0-9]/g, "").slice(0,5);
+      answerBlocks[idx] = input.value.trim();
+      refreshStatus();
+      rebuildAnswerKeyFromBlocks();
+      updateSummaryPanel();
+    });
+
+    refreshStatus();
+
+    row.appendChild(input);
+    row.appendChild(status);
+    host.appendChild(row);
+  });
+
+  rebuildAnswerKeyFromBlocks();
+}
+
+renderAnswerBlocks();
 
 // ============================
 // File/Image helpers
@@ -336,7 +426,6 @@ function getRoiRectPx(qIdx1based, choiceIdx1based){
   return new cv.Rect(x1, y1, Math.max(1, x2-x1), Math.max(1, y2-y1));
 }
 
-// “한 문항(1~5 전체)” 캡처 영역(리뷰 이미지)
 function getRowCropRectPx(qIdx1based){
   const yMm = qCenterYmm(qIdx1based);
 
@@ -370,27 +459,26 @@ function recalcScoreAndStatus(r){
   let wrong = 0;
   let needsReview = false;
 
+  // 정답키가 완성되지 않았으면 채점 자체를 리뷰로 둠
+  const keyReady = answerKey.every(v => v != null);
+
   for(let i=0;i<25;i++){
     const d = r.detected[i];
     if(!d) continue;
 
-    // 자동 플래그가 남아있으면 아직 리뷰 필요로 봄 (단, MANUAL이면 해결로 간주)
     if(d.flag === "REVIEW" || d.flag === "MULTI" || d.flag === "BLANK") needsReview = true;
 
     const c = d.choice;
     if(c == null) continue;
 
-    if(c === answerKey[i]) score += 1;
-    else wrong += 1;
+    if(keyReady && c === answerKey[i]) score += 1;
+    else if(keyReady) wrong += 1;
   }
 
-  r.score = score;
-  r.wrong = wrong;
-  r.needsReview = needsReview;
-
-  // 리뷰 UI에서 전부 MANUAL로 바꾸면 GRADED로 떨어지게 하고 싶으면 아래를 사용:
-  // r.status = needsReview ? "NEEDS_REVIEW" : "GRADED";
-  r.status = needsReview ? "NEEDS_REVIEW" : "GRADED";
+  r.score = keyReady ? score : null;
+  r.wrong = keyReady ? wrong : null;
+  r.needsReview = needsReview || !keyReady;
+  r.status = r.needsReview ? "NEEDS_REVIEW" : "GRADED";
 }
 
 function flagLabel(flag){
@@ -439,7 +527,6 @@ function gradeOne(matRgba){
   const warped = warpToA4(gray, mr.markers);
   gray.delete();
 
-  // 리뷰용: 정렬 이미지 dataURL 저장
   const warpedDataUrl = warpedToDataURL(warped);
 
   const detected = [];
@@ -482,8 +569,8 @@ function gradeOne(matRgba){
 
   const r = {
     status: needsReview ? "NEEDS_REVIEW" : "GRADED",
-    score: 0,
-    wrong: 0,
+    score: null,
+    wrong: null,
     needsReview,
     reason: null,
     detected,
@@ -497,17 +584,16 @@ function gradeOne(matRgba){
 // Review UI (이미지 캡처 + 버튼 수정)
 // ============================
 function renderReviewUI(result, containerEl, onUpdated){
-  // 리뷰 대상 문항만
   const items = result.detected
     .map((d, i) => ({ q: i+1, ...d }))
-    .filter(d => d.flag !== "CONFIDENT"); // CONFIDENT 제외
+    .filter(d => d.flag !== "CONFIDENT");
 
   const wrap = document.createElement("div");
   wrap.className = "review-wrap";
   wrap.innerHTML = `
     <div class="small">
       ⚠ 리뷰 필요 문항: <b>${items.length}</b>개
-      <span class="muted">(각 문항 이미지(버블 1~5)를 보고 1~5/무응답 버튼으로 수정)</span>
+      <span class="muted">(문항 이미지(버블 1~5)를 보고 1~5/무응답 버튼으로 수정)</span>
     </div>
   `;
 
@@ -528,18 +614,15 @@ function renderReviewUI(result, containerEl, onUpdated){
       const row = document.createElement("div");
       row.className = "review-item";
 
-      // crop canvas
       const crop = document.createElement("canvas");
       crop.className = "review-crop";
 
-      // 문항 라벨 + 상태
       const left = document.createElement("div");
       left.innerHTML = `
         <div><b>${it.q}번</b> <span class="warn">${flagLabel(it.flag)}</span></div>
         <div class="small muted">현재 선택: <b>${it.choice ?? "-"}</b></div>
       `;
 
-      // 버튼 영역
       const right = document.createElement("div");
       right.className = "review-buttons";
 
@@ -554,29 +637,24 @@ function renderReviewUI(result, containerEl, onUpdated){
       bBlank.textContent = "무응답";
       right.appendChild(bBlank);
 
-      // crop draw
       const rect = getRowCropRectPx(it.q);
       crop.width = rect.w;
       crop.height = rect.h;
       const ctx = crop.getContext("2d");
       ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
 
-      // 버튼 스타일 업데이트
       function refreshButtons(){
         for(const {v, b} of btns){
           b.style.fontWeight = (result.detected[it.q-1].choice === v) ? "900" : "400";
         }
         bBlank.style.fontWeight = (result.detected[it.q-1].choice == null) ? "900" : "400";
-
-        // 좌측 표시도 업데이트
         left.querySelector(".muted").innerHTML = `현재 선택: <b>${result.detected[it.q-1].choice ?? "-"}</b>`;
       }
 
-      // 클릭 핸들러: choice 설정 + flag MANUAL + 재채점
       for(const {v, b} of btns){
         b.onclick = () => {
           result.detected[it.q-1].choice = v;
-          result.detected[it.q-1].flag = "MANUAL"; // 해결 처리
+          result.detected[it.q-1].flag = "MANUAL";
           recalcScoreAndStatus(result);
           refreshButtons();
           onUpdated?.();
@@ -596,8 +674,8 @@ function renderReviewUI(result, containerEl, onUpdated){
       const rightWrap = document.createElement("div");
       rightWrap.appendChild(left);
       rightWrap.appendChild(right);
-
       row.appendChild(rightWrap);
+
       wrap.appendChild(row);
     }
   };
@@ -621,17 +699,20 @@ function buildSummary(results){
     return acc;
   }, {});
 
-  // 문항별 정답률(선택값 있는 것만)
   const correctCnt = Array(25).fill(0);
   const totalCnt = Array(25).fill(0);
 
-  for(const r of ok){
-    if(!r.detected) continue;
-    for(let i=0;i<25;i++){
-      const d = r.detected[i];
-      if(!d || d.choice == null) continue;
-      totalCnt[i] += 1;
-      if(d.choice === answerKey[i]) correctCnt[i] += 1;
+  const keyReady = answerKey.every(v => v != null);
+
+  if(keyReady){
+    for(const r of ok){
+      if(!r.detected) continue;
+      for(let i=0;i<25;i++){
+        const d = r.detected[i];
+        if(!d || d.choice == null) continue;
+        totalCnt[i] += 1;
+        if(d.choice === answerKey[i]) correctCnt[i] += 1;
+      }
     }
   }
 
@@ -688,6 +769,9 @@ function downloadText(filename, text){
 // Wire UI
 // ============================
 document.getElementById("gradeBtn").onclick = async () => {
+  // 정답키가 완성 안 됐으면 경고만(채점은 가능하지만 점수는 null)
+  rebuildAnswerKeyFromBlocks();
+
   const files = document.getElementById("files").files;
   if(!files.length) return;
 
@@ -710,20 +794,17 @@ document.getElementById("gradeBtn").onclick = async () => {
     r.filename = f.name;
     allResults.push(r);
 
-    // 결과 카드 렌더
     card.innerHTML = `
       <div><b>${f.name}</b> — ${pill(r.status)}</div>
       <div class="small">score: <b>${r.score ?? "-"}</b> / wrong: <b>${r.wrong ?? "-"}</b></div>
       ${r.reason ? `<div class="small"><span class="bad">reason:</span> ${r.reason}</div>` : ""}
     `;
 
-    // 리뷰 UI(NEEDS_REVIEW인 경우만)
     if(r.status === "NEEDS_REVIEW" && r.detected){
       const reviewHost = document.createElement("div");
       card.appendChild(reviewHost);
 
       renderReviewUI(r, reviewHost, () => {
-        // 수정 후 카드 상단 상태/점수 갱신
         card.querySelector(".small").innerHTML =
           `score: <b>${r.score ?? "-"}</b> / wrong: <b>${r.wrong ?? "-"}</b>`;
         card.querySelector("div").innerHTML =

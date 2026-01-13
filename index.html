@@ -3,31 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>OMR 25×5 채점 (GitHub Pages)</title>
+  <title>OMR 25×5 채점 (O/X/V 표기)</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 16px; }
-    .row { margin: 6px 0; }
     .card { border: 1px solid #ddd; padding: 12px; border-radius: 12px; margin: 12px 0; }
-    button { margin-right: 4px; padding: 6px 10px; }
+    button { margin-right: 6px; padding: 6px 10px; }
     input[type="text"] { padding: 8px 10px; border-radius: 10px; border: 1px solid #ddd; width: 220px; }
     .small { color:#666; font-size: 12px; line-height: 1.4; }
     .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
     canvas { max-width: 100%; border: 1px solid #eee; border-radius: 12px; }
+    img { max-width: 100%; border: 1px solid #eee; border-radius: 12px; }
     .ok { color: #0a7; font-weight: 800; }
     .bad { color: #c33; font-weight: 800; }
     .warn { color: #f60; font-weight: 800; }
     .pill { display:inline-block; padding:2px 8px; border-radius: 999px; font-size: 12px; }
     .pill-ok { background:#e9fff6; color:#0a7; }
-    .pill-warn { background:#fff4e8; color:#f60; }
     .pill-bad { background:#ffecec; color:#c33; }
 
     #markerCanvas { width: 100%; height: auto; max-width: 520px; }
-
-    .review-wrap { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ddd; }
-    .review-item { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; margin: 10px 0; }
-    .review-crop { width: 140px; height: auto; border-radius: 10px; border: 1px solid #eee; }
-    .review-buttons button { margin: 2px 4px 2px 0; }
-    .muted { opacity: 0.7; }
 
     .answer-block { display:flex; align-items:center; gap:10px; margin: 10px 0; flex-wrap: wrap; }
     .answer-label { width: 70px; font-weight: 800; }
@@ -36,11 +29,10 @@
 </head>
 <body>
 
-  <h2>1) 정답 입력 (5문항 단���)</h2>
+  <h2>1) 정답 입력 (5문항 단위)</h2>
   <div class="card">
     <div class="small">
-      각 줄에 <b>5자리 숫자(1~5)</b>를 입력하세요. 예: <span class="hint">23213</span><br/>
-      입력 즉시 아래 “현재 정답키”에 반영됩니다.
+      각 줄에 <b>5자리 숫자(1~5)</b>를 입력하세요. 예: <span class="hint">23213</span>
     </div>
 
     <div id="answerBlocks"></div>
@@ -54,29 +46,26 @@
   <h2>2) 답안지 사진 업로드</h2>
   <div class="card">
     <input id="files" type="file" accept="image/*" multiple />
-    <button id="gradeBtn" disabled>채점하기</button>
+    <button id="gradeBtn" disabled>채점 + O/X/V 이미지 생성</button>
     <div class="small" id="cvStatus">OpenCV 로딩 중…</div>
   </div>
 
   <div class="grid">
     <div>
-      <h2>3) 채점 결과</h2>
+      <h2>3) 결과</h2>
       <div id="results"></div>
     </div>
 
     <div>
-      <h2>디버그 (마커/실패 원인)</h2>
+      <h2>디버그 (마커)</h2>
       <div class="card">
         <b>디버그 상태</b>
         <div class="small" id="debugText">-</div>
         <canvas id="markerCanvas"></canvas>
-        <div class="small">
-          파란 박스 = 마커 후보 / TL·TR·BL·BR 원 = 선택된 4코너<br/>
-          FAILED_MARKER면 여기에서 “왜 후보가 부족한지/왜 선택이 꼬였는지” 확인 가능
-        </div>
+        <div class="small">파란 박스=마커 후보 / TL·TR·BL·BR=선택된 코너</div>
       </div>
 
-      <h2>4) 결과 요약</h2>
+      <h2>4) 요약</h2>
       <div class="card">
         <button id="downloadCsvBtn">CSV 다운로드</button>
         <pre id="summary"></pre>
@@ -84,7 +73,7 @@
     </div>
   </div>
 
-  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
-  <script src="./app.js"></script>
+  <script defer src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <script defer src="./app.js"></script>
 </body>
 </html>

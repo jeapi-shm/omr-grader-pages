@@ -340,7 +340,7 @@ function detectRingMarkers(gray /*cv.Mat*/){
 
     // mean이 높으면(밝으면) 내부가 흰 영역일 가능성↑
 
-    if(mean < 170) { // 샘플 기준 시작점(필요시 150~200 조정)
+    if(mean < 140) { // 샘플 기준 시작점(필요시 150~200 조정)
 
       approx.delete(); cnt.delete();
 

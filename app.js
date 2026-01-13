@@ -1,5 +1,5 @@
 // ============================
-// 템플릿/판독 설정 (OMR 25문항 템플릿 기준)
+// OMR 25×5 (O/X/V 표기) - 최소 UI 버전
 // ============================
 
 // A4 mm
@@ -12,55 +12,36 @@ const ROW_GAP_MM = 8;
 // 링 마커: outer 10mm, offset 12mm → center = 12+5 = 17mm
 const MARKER_CENTER_OFFSET_MM = 17;
 
-// 보기 버블 중심 X(mm): margin(10) + [40,47,54,61,68] = [50,57,64,71,78]
+// 보기 버블 중심 X(mm)
 const CHOICE_X_MM = [50, 57, 64, 71, 78];
 
-// 문항 버블 중심 Y(mm): top에서 38mm + 8mm*q
+// 문항 버블 중심 Y(mm)
 function qCenterYmm(qIdx1based){
   return 38 + (ROW_GAP_MM * qIdx1based);
 }
 
-// ROI 크기 (mm)
+// ROI(mm)
 const ROI_HALF_MM = 4.0;
 
-// “리뷰 캡처”는 한 문항의 1~5 전체를 보여줘야 하므로 폭을 넉넉히
-const ROW_CROP_PAD_MM_X = 6.0;
-const ROW_CROP_PAD_MM_Y = 5.0;
+// “애매 제거”: 빈칸만 null 처리
+const TH_BLANK  = 0.16;
 
-// 채움 임계값
-const TH_SELECT = 0.55;
-const TH_BLANK  = 0.18;
-const TH_REVIEW_LOW  = 0.35;
-
-// 갤���시 고해상도 사진 대비: 브라우저 처리 안정 리사이즈
+// 안정 리사이즈
 const RESIZE_LONG_EDGE = 1800;
 
-// 정렬(원근보정) 결과 크기(px)
+// 워프 크기(px)
 const WARP_H = 1800;
 const WARP_W = Math.round(WARP_H * (A4_W_MM / A4_H_MM));
 
 // ============================
 // UI state
 // ============================
-let answerKey = Array(25).fill(null);   // 초기엔 null로(입력 유효성 체크)
-let allResults = [];                    // 누적 요약/CSV
-let answerBlocks = ["", "", "", "", ""]; // 1~5,6~10,... 5개 블록
+let answerKey = Array(25).fill(null);
+let answerBlocks = ["", "", "", "", ""];
 
 // ============================
-// UI Helpers
+// OpenCV ready
 // ============================
-function pill(status){
-  if(status === "GRADED") return `<span class="pill pill-ok">GRADED</span>`;
-  if(status === "NEEDS_REVIEW") return `<span class="pill pill-warn">NEEDS_REVIEW</span>`;
-  return `<span class="pill pill-bad">${status}</span>`;
-}
-
-function setDebugText(lines){
-  const el = document.getElementById("debugText");
-  if(!el) return;
-  el.innerHTML = lines.map(s => `<div>${s}</div>`).join("");
-}
-
 function waitForOpenCV(){
   return new Promise((resolve) => {
     const timer = setInterval(() => {
@@ -79,11 +60,9 @@ function waitForOpenCV(){
 })();
 
 // ============================
-// Answer input (5문항 단위 문자열 입력)
+// Answer input (5문항 단위)
 // ============================
-
 function isValidBlockText(s){
-  // 공백 허용(미입력), 입력 시엔 정확히 5자리 + 1~5만
   if(!s) return true;
   if(s.length !== 5) return false;
   return /^[1-5]{5}$/.test(s);
@@ -95,46 +74,26 @@ function rebuildAnswerKeyFromBlocks(){
 
   for(let b=0;b<5;b++){
     const s = (answerBlocks[b] || "").trim();
-    if(!s){
-      ok = false;
-      // 5개를 null로 채움
-      for(let i=0;i<5;i++) key.push(null);
-      continue;
-    }
-    if(!isValidBlockText(s)){
-      ok = false;
-      for(let i=0;i<5;i++) key.push(null);
-      continue;
-    }
+    if(!s){ ok = false; for(let i=0;i<5;i++) key.push(null); continue; }
+    if(!isValidBlockText(s)){ ok = false; for(let i=0;i<5;i++) key.push(null); continue; }
     for(let i=0;i<5;i++) key.push(parseInt(s[i], 10));
   }
 
   answerKey = key;
-  updateAnswerKeyText(ok);
-  return ok;
-}
-
-function updateAnswerKeyText(ok){
-  const textEl = document.getElementById("answerKeyText");
-  const validEl = document.getElementById("answerKeyValid");
 
   const shown = answerKey.map(v => v == null ? "-" : String(v)).join("");
-  textEl.textContent = shown;
+  document.getElementById("answerKeyText").textContent = shown;
+  document.getElementById("answerKeyValid").innerHTML =
+    ok ? ` <span class="ok">✅ 입력 완료</span>` : ` <span class="warn">⚠ 미입력/형식 오류 있음</span>`;
 
-  if(ok){
-    validEl.innerHTML = ` <span class="ok">✅ 입력 완료</span>`;
-  } else {
-    validEl.innerHTML = ` <span class="warn">⚠ 미입력/형식 오류 있음</span>`;
-  }
+  return ok;
 }
 
 function renderAnswerBlocks(){
   const host = document.getElementById("answerBlocks");
   host.innerHTML = "";
 
-  const ranges = [
-    "1~5", "6~10", "11~15", "16~20", "21~25"
-  ];
+  const ranges = ["1~5", "6~10", "11~15", "16~20", "21~25"];
 
   ranges.forEach((label, idx) => {
     const row = document.createElement("div");
@@ -156,22 +115,16 @@ function renderAnswerBlocks(){
 
     function refreshStatus(){
       const v = input.value.trim();
-      if(!v){
-        status.innerHTML = `<span class="warn">미입력</span>`;
-      } else if(isValidBlockText(v)){
-        status.innerHTML = `<span class="ok">OK</span>`;
-      } else {
-        status.innerHTML = `<span class="bad">형식오류</span> (5자리, 1~5만)`;
-      }
+      if(!v) status.innerHTML = `<span class="warn">미입력</span>`;
+      else if(isValidBlockText(v)) status.innerHTML = `<span class="ok">OK</span>`;
+      else status.innerHTML = `<span class="warn">형식오류</span> (5자리, 1~5만)`;
     }
 
     input.addEventListener("input", () => {
-      // 숫자만 남기기(옵션): 0~9 이외 제거
       input.value = input.value.replace(/[^0-9]/g, "").slice(0,5);
       answerBlocks[idx] = input.value.trim();
       refreshStatus();
       rebuildAnswerKeyFromBlocks();
-      updateSummaryPanel();
     });
 
     refreshStatus();
@@ -183,11 +136,10 @@ function renderAnswerBlocks(){
 
   rebuildAnswerKeyFromBlocks();
 }
-
 renderAnswerBlocks();
 
 // ============================
-// File/Image helpers
+// Image helpers
 // ============================
 function fileToImage(file){
   return new Promise((resolve, reject) => {
@@ -209,8 +161,7 @@ function drawImageResizedToCanvas(img, longEdge){
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(img, 0, 0, w, h);
+  canvas.getContext("2d").drawImage(img, 0, 0, w, h);
   return canvas;
 }
 
@@ -221,63 +172,7 @@ function canvasToMatRGBA(canvas){
 }
 
 // ============================
-// Debug drawing (마커 후보/선택 표시)
-// ============================
-function drawMarkersOnCanvas(srcGray, candidates, picked){
-  const canvas = document.getElementById("markerCanvas");
-  if(!canvas) return;
-
-  const maxW = 520;
-  const scale = Math.min(1, maxW / srcGray.cols);
-  canvas.width = Math.round(srcGray.cols * scale);
-  canvas.height = Math.round(srcGray.rows * scale);
-
-  const ctx = canvas.getContext("2d");
-
-  const rgba = new cv.Mat();
-  cv.cvtColor(srcGray, rgba, cv.COLOR_GRAY2RGBA);
-  const imgData = new ImageData(new Uint8ClampedArray(rgba.data), rgba.cols, rgba.rows);
-
-  const tmp = document.createElement("canvas");
-  tmp.width = rgba.cols;
-  tmp.height = rgba.rows;
-  tmp.getContext("2d").putImageData(imgData, 0, 0);
-
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.drawImage(tmp, 0, 0, canvas.width, canvas.height);
-  rgba.delete();
-
-  // 후보(파란 박스)
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = "rgba(0,120,255,0.85)";
-  for(const p of (candidates || [])){
-    const r = p.rect;
-    ctx.strokeRect(r.x*scale, r.y*scale, r.width*scale, r.height*scale);
-  }
-
-  // 선택된 코너(TL/TR/BL/BR)
-  if(picked){
-    const map = [
-      ["TL", picked.tl, "rgba(0,180,120,0.95)"],
-      ["TR", picked.tr, "rgba(0,180,120,0.95)"],
-      ["BL", picked.bl, "rgba(0,180,120,0.95)"],
-      ["BR", picked.br, "rgba(0,180,120,0.95)"],
-    ];
-    for(const [label, p, color] of map){
-      ctx.strokeStyle = color;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(p.cx*scale, p.cy*scale, 10, 0, Math.PI*2);
-      ctx.stroke();
-
-      ctx.font = "14px system-ui";
-      ctx.fillText(label, p.cx*scale + 12, p.cy*scale - 12);
-    }
-  }
-}
-
-// ============================
-// Core: marker detection (ring marker)
+// Marker detection (ring marker)
 // ============================
 function detectRingMarkers(gray){
   const th = new cv.Mat();
@@ -310,7 +205,6 @@ function detectRingMarkers(gray){
 
     const rectRoi = gray.roi(new cv.Rect(x, y, w, h));
     const innerRoi = gray.roi(new cv.Rect(cx1, cy1, cw, ch));
-
     const meanRect  = cv.mean(rectRoi)[0];
     const meanInner = cv.mean(innerRoi)[0];
 
@@ -325,23 +219,13 @@ function detectRingMarkers(gray){
       cnt.delete(); continue;
     }
 
-    candidates.push({
-      cx: x + w/2,
-      cy: y + h/2,
-      rect,
-      area,
-      meanInner: Math.round(meanInner),
-      meanOuter: Math.round(meanOuter)
-    });
-
+    candidates.push({ cx: x + w/2, cy: y + h/2, area });
     cnt.delete();
   }
 
   contours.delete(); hierarchy.delete(); th.delete();
 
-  if(candidates.length < 4){
-    return { markers: null, candidates, debug: { reason: "candidates<4", count: candidates.length } };
-  }
+  if(candidates.length < 4) return null;
 
   candidates.sort((a,b)=>b.area-a.area);
   const top = candidates.slice(0, 8);
@@ -352,11 +236,9 @@ function detectRingMarkers(gray){
   const bl = top.reduce((best, p)=> (p.cx-p.cy < best.cx-best.cy ? p : best), top[0]);
 
   const uniq = new Set([tl, tr, bl, br].map(o => `${Math.round(o.cx)}_${Math.round(o.cy)}`));
-  if(uniq.size !== 4){
-    return { markers: null, candidates, debug: { reason: "duplicate-corners", count: candidates.length } };
-  }
+  if(uniq.size !== 4) return null;
 
-  return { markers: {tl, tr, bl, br}, candidates, debug: { reason: "ok", count: candidates.length } };
+  return {tl, tr, bl, br};
 }
 
 // ============================
@@ -389,22 +271,6 @@ function warpToA4(gray, m){
   return warped;
 }
 
-// warpedGray -> dataURL (리뷰 이미지 캡처용)
-function warpedToDataURL(warpedGray){
-  const rgba = new cv.Mat();
-  cv.cvtColor(warpedGray, rgba, cv.COLOR_GRAY2RGBA);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = rgba.cols;
-  canvas.height = rgba.rows;
-  const ctx = canvas.getContext("2d");
-  const imgData = new ImageData(new Uint8ClampedArray(rgba.data), rgba.cols, rgba.rows);
-  ctx.putImageData(imgData, 0, 0);
-
-  rgba.delete();
-  return canvas.toDataURL("image/png");
-}
-
 // ============================
 // ROI + fill score
 // ============================
@@ -426,23 +292,6 @@ function getRoiRectPx(qIdx1based, choiceIdx1based){
   return new cv.Rect(x1, y1, Math.max(1, x2-x1), Math.max(1, y2-y1));
 }
 
-function getRowCropRectPx(qIdx1based){
-  const yMm = qCenterYmm(qIdx1based);
-
-  const leftMm  = CHOICE_X_MM[0] - ROI_HALF_MM - ROW_CROP_PAD_MM_X;
-  const rightMm = CHOICE_X_MM[4] + ROI_HALF_MM + ROW_CROP_PAD_MM_X;
-
-  const topMm    = yMm - ROI_HALF_MM - ROW_CROP_PAD_MM_Y;
-  const bottomMm = yMm + ROI_HALF_MM + ROW_CROP_PAD_MM_Y;
-
-  const x1 = Math.max(0, Math.round(mmToPxX(leftMm)));
-  const x2 = Math.min(WARP_W-1, Math.round(mmToPxX(rightMm)));
-  const y1 = Math.max(0, Math.round(mmToPxY(topMm)));
-  const y2 = Math.min(WARP_H-1, Math.round(mmToPxY(bottomMm)));
-
-  return { x: x1, y: y1, w: Math.max(1, x2-x1), h: Math.max(1, y2-y1) };
-}
-
 function fillScore(grayRoi){
   const th = new cv.Mat();
   cv.adaptiveThreshold(grayRoi, th, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 21, 7);
@@ -452,85 +301,67 @@ function fillScore(grayRoi){
 }
 
 // ============================
-// Grading + manual override (리뷰 수정)
+// O/X/V annotate (warp 위에 직접 표기)
 // ============================
-function recalcScoreAndStatus(r){
-  let score = 0;
-  let wrong = 0;
-  let needsReview = false;
+function drawOXVOnWarped(warpedGray, detectedChoices){
+  const out = new cv.Mat();
+  cv.cvtColor(warpedGray, out, cv.COLOR_GRAY2RGBA);
 
-  // 정답키가 완성되지 않았으면 채점 자체를 리뷰로 둠
-  const keyReady = answerKey.every(v => v != null);
+  const BLUE  = new cv.Scalar(31, 111, 235, 255);
+  const RED   = new cv.Scalar(209, 36, 47, 255);
+  const GREEN = new cv.Scalar(20, 160, 80, 255);
 
-  for(let i=0;i<25;i++){
-    const d = r.detected[i];
-    if(!d) continue;
+  const font = cv.FONT_HERSHEY_SIMPLEX;
+  const fontScale = 0.9;
+  const thickness = 2;
 
-    if(d.flag === "REVIEW" || d.flag === "MULTI" || d.flag === "BLANK") needsReview = true;
+  for(let q=1;q<=25;q++){
+    const correct = answerKey[q-1];
+    const chosen = detectedChoices[q-1];
 
-    const c = d.choice;
-    if(c == null) continue;
+    const y = Math.round(mmToPxY(qCenterYmm(q)) + 6);
 
-    if(keyReady && c === answerKey[i]) score += 1;
-    else if(keyReady) wrong += 1;
+    if(correct != null){
+      const xV = Math.round(mmToPxX(CHOICE_X_MM[correct-1]) - 8);
+      cv.putText(out, "V", new cv.Point(xV, y), font, fontScale, GREEN, thickness);
+    }
+
+    if(chosen != null){
+      const isCorrect = (correct != null) ? (chosen === correct) : false;
+      const xM = Math.round(mmToPxX(CHOICE_X_MM[chosen-1]) - 10);
+      cv.putText(out, isCorrect ? "O" : "X", new cv.Point(xM, y), font, fontScale, isCorrect ? BLUE : RED, thickness);
+    }
   }
 
-  r.score = keyReady ? score : null;
-  r.wrong = keyReady ? wrong : null;
-  r.needsReview = needsReview || !keyReady;
-  r.status = r.needsReview ? "NEEDS_REVIEW" : "GRADED";
-}
+  const canvas = document.createElement("canvas");
+  canvas.width = out.cols;
+  canvas.height = out.rows;
+  const ctx = canvas.getContext("2d");
+  const imgData = new ImageData(new Uint8ClampedArray(out.data), out.cols, out.rows);
+  ctx.putImageData(imgData, 0, 0);
 
-function flagLabel(flag){
-  if(flag === "MULTI") return "복수마킹";
-  if(flag === "BLANK") return "무응답";
-  if(flag === "REVIEW") return "애매";
-  if(flag === "MANUAL") return "수정됨";
-  return flag;
+  out.delete();
+  return canvas.toDataURL("image/png");
 }
 
 // ============================
-// Grade one image
+// grade one (애매 없음)
 // ============================
 function gradeOne(matRgba){
   const gray = new cv.Mat();
   cv.cvtColor(matRgba, gray, cv.COLOR_RGBA2GRAY);
   cv.GaussianBlur(gray, gray, new cv.Size(3,3), 0);
 
-  const mr = detectRingMarkers(gray);
-
-  const candInfo = (mr.candidates || []).slice(0, 8).map((c, idx) =>
-    `cand${idx+1}: area=${Math.round(c.area)} inner=${c.meanInner} outer=${c.meanOuter}`
-  );
-
-  setDebugText([
-    `reason: <b>${mr.debug.reason}</b>`,
-    `candidates: <b>${mr.debug.count}</b>`,
-    ...candInfo
-  ]);
-
-  drawMarkersOnCanvas(gray, mr.candidates || [], mr.markers || null);
-
-  if(!mr.markers){
+  const markers = detectRingMarkers(gray);
+  if(!markers){
     gray.delete();
-    return {
-      status: "FAILED_MARKER",
-      score: null,
-      wrong: null,
-      needsReview: true,
-      reason: `marker fail: ${mr.debug.reason} (candidates=${mr.debug.count})`,
-      detected: null,
-      warpedDataUrl: null
-    };
+    return { status: "FAILED_MARKER", score: null, wrong: null, annotatedDataUrl: null };
   }
 
-  const warped = warpToA4(gray, mr.markers);
+  const warped = warpToA4(gray, markers);
   gray.delete();
 
-  const warpedDataUrl = warpedToDataURL(warped);
-
-  const detected = [];
-  let needsReview = false;
+  const detectedChoices = Array(25).fill(null);
 
   for(let q=1;q<=25;q++){
     const scores = [];
@@ -542,234 +373,50 @@ function gradeOne(matRgba){
       scores.push(s);
     }
 
+    if(scores.every(v => v < TH_BLANK)){
+      detectedChoices[q-1] = null;
+      continue;
+    }
+
     let bestIdx = 0;
     for(let i=1;i<5;i++) if(scores[i] > scores[bestIdx]) bestIdx = i;
-    const bestScore = scores[bestIdx];
-    const over = scores.filter(v => v >= TH_SELECT).length;
-
-    let flag = "CONFIDENT";
-    let choice = null;
-
-    if(scores.every(v => v < TH_BLANK)){
-      flag = "BLANK"; choice = null; needsReview = true;
-    } else if(over >= 2){
-      flag = "MULTI"; choice = null; needsReview = true;
-    } else if(bestScore >= TH_SELECT){
-      flag = "CONFIDENT"; choice = bestIdx + 1;
-    } else if(bestScore >= TH_REVIEW_LOW){
-      flag = "REVIEW"; choice = bestIdx + 1; needsReview = true;
-    } else {
-      flag = "REVIEW"; choice = bestIdx + 1; needsReview = true;
-    }
-
-    detected.push({ choice, scores, flag });
+    detectedChoices[q-1] = bestIdx + 1;
   }
-
-  warped.delete();
-
-  const r = {
-    status: needsReview ? "NEEDS_REVIEW" : "GRADED",
-    score: null,
-    wrong: null,
-    needsReview,
-    reason: null,
-    detected,
-    warpedDataUrl
-  };
-  recalcScoreAndStatus(r);
-  return r;
-}
-
-// ============================
-// Review UI (이미지 캡처 + 버튼 수정)
-// ============================
-function renderReviewUI(result, containerEl, onUpdated){
-  const items = result.detected
-    .map((d, i) => ({ q: i+1, ...d }))
-    .filter(d => d.flag !== "CONFIDENT");
-
-  const wrap = document.createElement("div");
-  wrap.className = "review-wrap";
-  wrap.innerHTML = `
-    <div class="small">
-      ⚠ 리뷰 필요 문항: <b>${items.length}</b>개
-      <span class="muted">(문항 이미지(버블 1~5)를 보고 1~5/무응답 버튼으로 수정)</span>
-    </div>
-  `;
-
-  if(!result.warpedDataUrl){
-    const msg = document.createElement("div");
-    msg.className = "small bad";
-    msg.textContent = "리뷰 이미지를 만들 수 없습니다(정렬 이미지 없음).";
-    wrap.appendChild(msg);
-    containerEl.appendChild(wrap);
-    return;
-  }
-
-  const img = new Image();
-  img.src = result.warpedDataUrl;
-
-  img.onload = () => {
-    for(const it of items){
-      const row = document.createElement("div");
-      row.className = "review-item";
-
-      const crop = document.createElement("canvas");
-      crop.className = "review-crop";
-
-      const left = document.createElement("div");
-      left.innerHTML = `
-        <div><b>${it.q}번</b> <span class="warn">${flagLabel(it.flag)}</span></div>
-        <div class="small muted">현재 선택: <b>${it.choice ?? "-"}</b></div>
-      `;
-
-      const right = document.createElement("div");
-      right.className = "review-buttons";
-
-      const btns = [];
-      for(let v=1; v<=5; v++){
-        const b = document.createElement("button");
-        b.textContent = v;
-        btns.push({v, b});
-        right.appendChild(b);
-      }
-      const bBlank = document.createElement("button");
-      bBlank.textContent = "무응답";
-      right.appendChild(bBlank);
-
-      const rect = getRowCropRectPx(it.q);
-      crop.width = rect.w;
-      crop.height = rect.h;
-      const ctx = crop.getContext("2d");
-      ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
-
-      function refreshButtons(){
-        for(const {v, b} of btns){
-          b.style.fontWeight = (result.detected[it.q-1].choice === v) ? "900" : "400";
-        }
-        bBlank.style.fontWeight = (result.detected[it.q-1].choice == null) ? "900" : "400";
-        left.querySelector(".muted").innerHTML = `현재 선택: <b>${result.detected[it.q-1].choice ?? "-"}</b>`;
-      }
-
-      for(const {v, b} of btns){
-        b.onclick = () => {
-          result.detected[it.q-1].choice = v;
-          result.detected[it.q-1].flag = "MANUAL";
-          recalcScoreAndStatus(result);
-          refreshButtons();
-          onUpdated?.();
-        };
-      }
-      bBlank.onclick = () => {
-        result.detected[it.q-1].choice = null;
-        result.detected[it.q-1].flag = "MANUAL";
-        recalcScoreAndStatus(result);
-        refreshButtons();
-        onUpdated?.();
-      };
-
-      refreshButtons();
-
-      row.appendChild(crop);
-      const rightWrap = document.createElement("div");
-      rightWrap.appendChild(left);
-      rightWrap.appendChild(right);
-      row.appendChild(rightWrap);
-
-      wrap.appendChild(row);
-    }
-  };
-
-  containerEl.appendChild(wrap);
-}
-
-// ============================
-// Summary + CSV
-// ============================
-function buildSummary(results){
-  const ok = results.filter(r => r.status === "GRADED" || r.status === "NEEDS_REVIEW");
-  const scores = ok.map(r => r.score).filter(s => typeof s === "number");
-  const n = scores.length;
-  const avg = n ? (scores.reduce((a,b)=>a+b,0)/n) : 0;
-  const min = n ? Math.min(...scores) : 0;
-  const max = n ? Math.max(...scores) : 0;
-
-  const statusCount = results.reduce((acc, r) => {
-    acc[r.status] = (acc[r.status]||0)+1;
-    return acc;
-  }, {});
-
-  const correctCnt = Array(25).fill(0);
-  const totalCnt = Array(25).fill(0);
 
   const keyReady = answerKey.every(v => v != null);
-
+  let score = null, wrong = null;
   if(keyReady){
-    for(const r of ok){
-      if(!r.detected) continue;
-      for(let i=0;i<25;i++){
-        const d = r.detected[i];
-        if(!d || d.choice == null) continue;
-        totalCnt[i] += 1;
-        if(d.choice === answerKey[i]) correctCnt[i] += 1;
-      }
+    score = 0; wrong = 0;
+    for(let i=0;i<25;i++){
+      const c = detectedChoices[i];
+      if(c == null) continue;
+      if(c === answerKey[i]) score++;
+      else wrong++;
     }
   }
 
-  const correctRate = correctCnt.map((c,i)=>{
-    const t = totalCnt[i];
-    return t ? Number((c/t).toFixed(3)) : null;
-  });
+  const annotatedDataUrl = drawOXVOnWarped(warped, detectedChoices);
+  warped.delete();
 
-  return { statusCount, n, avg: Number(avg.toFixed(2)), min, max, correctRate };
+  return { status: "GRADED", score, wrong, annotatedDataUrl };
 }
 
-function updateSummaryPanel(){
-  const summary = buildSummary(allResults);
-  document.getElementById("summary").textContent = JSON.stringify(summary, null, 2);
-}
-
-function toCSV(results){
-  const header = ["filename","status","score", ...Array.from({length:25},(_,i)=>`Q${i+1}`)];
-  const rows = [header];
-
-  for(const r of results){
-    const row = [r.filename, r.status, (r.score ?? "")];
-    if(r.detected){
-      for(let i=0;i<25;i++){
-        row.push(r.detected[i]?.choice ?? "");
-      }
-    } else {
-      for(let i=0;i<25;i++) row.push("");
-    }
-    rows.push(row);
-  }
-
-  return rows.map(cols =>
-    cols.map(v => {
-      const s = String(v ?? "");
-      return /[,"\n]/.test(s) ? `"${s.replaceAll('"','""')}"` : s;
-    }).join(",")
-  ).join("\n");
-}
-
-function downloadText(filename, text){
-  const blob = new Blob([text], {type: "text/csv;charset=utf-8"});
-  const url = URL.createObjectURL(blob);
+// ============================
+// download helper
+// ============================
+function downloadDataUrl(filename, dataUrl){
   const a = document.createElement("a");
-  a.href = url;
+  a.href = dataUrl;
   a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
 }
 
 // ============================
 // Wire UI
 // ============================
 document.getElementById("gradeBtn").onclick = async () => {
-  // 정답키가 완성 안 됐으면 경고만(채점은 가능하지만 점수는 null)
   rebuildAnswerKeyFromBlocks();
 
   const files = document.getElementById("files").files;
@@ -791,34 +438,27 @@ document.getElementById("gradeBtn").onclick = async () => {
     const r = gradeOne(mat);
     mat.delete();
 
-    r.filename = f.name;
-    allResults.push(r);
-
-    card.innerHTML = `
-      <div><b>${f.name}</b> — ${pill(r.status)}</div>
-      <div class="small">score: <b>${r.score ?? "-"}</b> / wrong: <b>${r.wrong ?? "-"}</b></div>
-      ${r.reason ? `<div class="small"><span class="bad">reason:</span> ${r.reason}</div>` : ""}
-    `;
-
-    if(r.status === "NEEDS_REVIEW" && r.detected){
-      const reviewHost = document.createElement("div");
-      card.appendChild(reviewHost);
-
-      renderReviewUI(r, reviewHost, () => {
-        card.querySelector(".small").innerHTML =
-          `score: <b>${r.score ?? "-"}</b> / wrong: <b>${r.wrong ?? "-"}</b>`;
-        card.querySelector("div").innerHTML =
-          `<b>${f.name}</b> — ${pill(r.status)}`;
-
-        updateSummaryPanel();
-      });
+    if(r.status !== "GRADED"){
+      card.innerHTML = `
+        <div><b>${f.name}</b> — <span class="pill pill-bad">FAILED</span></div>
+        <div class="small">마커 인식 실패(사진 각도/빛 반사/마커 훼손 확인)</div>
+      `;
+      continue;
     }
 
-    updateSummaryPanel();
-  }
-};
+    card.innerHTML = `
+      <div><b>${f.name}</b> — <span class="pill pill-ok">GRADED</span></div>
+      <div class="small">score: <b>${r.score ?? "-"}</b> / wrong: <b>${r.wrong ?? "-"}</b></div>
+      <div class="small">표기: 학생답 O(정답)/X(오답), 정답 위치 V</div>
+      ${r.annotatedDataUrl ? `<img src="${r.annotatedDataUrl}" alt="annotated">` : ""}
+      <div style="margin-top:8px;">
+        <button class="dlImg">표기된 이미지 다운로드</button>
+      </div>
+    `;
 
-document.getElementById("downloadCsvBtn").onclick = () => {
-  const csv = toCSV(allResults);
-  downloadText("omr_results.csv", csv);
+    card.querySelector(".dlImg").onclick = () => {
+      const base = f.name.replace(/\.[^.]+$/, "");
+      downloadDataUrl(`${base}_OXV.png`, r.annotatedDataUrl);
+    };
+  }
 };

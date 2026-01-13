@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OMR 채점 (GitHub Pages)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    .row { margin: 6px 0; }
+    .card { border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin: 10px 0; }
+    button { margin-right: 4px; }
+    canvas { max-width: 100%; border: 1px solid #eee; }
+    .small { color:#666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h2>1) 정답 입력 (25문항, 1~5)</h2>
+  <div id="answerGrid"></div>
+
+  <h2>2) 답안지 사진 업로드</h2>
+  <input id="files" type="file" accept="image/*" multiple />
+  <button id="gradeBtn" disabled>채점하기</button>
+  <div class="small" id="cvStatus">OpenCV 로딩 중…</div>
+
+  <h2>3) 채점 결과</h2>
+  <div id="results"></div>
+
+  <h2>4) 결과 요약</h2>
+  <pre id="summary"></pre>
+
+  <!-- OpenCV.js: CDN을 쓰면 파일 관리가 쉬움 -->
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

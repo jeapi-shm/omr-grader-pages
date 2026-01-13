@@ -3,14 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>OMR 채점 (GitHub Pages)</title>
+  <title>OMR 25×5 채점 (GitHub Pages)</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 16px; }
     .row { margin: 6px 0; }
-    .card { border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin: 10px 0; }
+    .card { border: 1px solid #ddd; padding: 10px; border-radius: 10px; margin: 10px 0; }
     button { margin-right: 4px; }
-    canvas { max-width: 100%; border: 1px solid #eee; }
     .small { color:#666; font-size: 12px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    canvas { max-width: 100%; border: 1px solid #eee; border-radius: 10px; }
+    .ok { color: #0a7; font-weight: 700; }
+    .bad { color: #c33; font-weight: 700; }
   </style>
 </head>
 <body>
@@ -22,13 +25,23 @@
   <button id="gradeBtn" disabled>채점하기</button>
   <div class="small" id="cvStatus">OpenCV 로딩 중…</div>
 
-  <h2>3) 채점 결과</h2>
-  <div id="results"></div>
+  <div class="grid">
+    <div>
+      <h3>3) 채점 결과</h3>
+      <div id="results"></div>
+    </div>
+    <div>
+      <h3>디버그 뷰 (정렬/ROI 오버레이)</h3>
+      <div class="small">※ 마커/정렬이 맞는지 확인용. 느리면 끄고 사용 가능.</div>
+      <canvas id="debugCanvas"></canvas>
+    </div>
+  </div>
 
   <h2>4) 결과 요약</h2>
+  <button id="downloadCsvBtn">CSV 다운로드</button>
   <pre id="summary"></pre>
 
-  <!-- OpenCV.js: CDN을 쓰면 파일 관리가 쉬움 -->
+  <!-- OpenCV.js -->
   <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
   <script src="./app.js"></script>
 </body>

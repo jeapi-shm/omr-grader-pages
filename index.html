@@ -19,7 +19,14 @@
     .pill-ok { background:#e9fff6; color:#0a7; }
     .pill-warn { background:#fff4e8; color:#f60; }
     .pill-bad { background:#ffecec; color:#c33; }
+
     #markerCanvas { width: 100%; height: auto; max-width: 520px; }
+
+    .review-wrap { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ddd; }
+    .review-item { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; margin: 10px 0; }
+    .review-crop { width: 140px; height: auto; border-radius: 10px; border: 1px solid #eee; }
+    .review-buttons button { margin: 2px 4px 2px 0; }
+    .muted { opacity: 0.7; }
   </style>
 </head>
 <body>
@@ -63,7 +70,6 @@
     </div>
   </div>
 
-  <!-- OpenCV.js (정적호스팅에서 그대로 사용) -->
   <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
   <script src="./app.js"></script>
 </body>

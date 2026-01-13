@@ -9,6 +9,7 @@
     .row { margin: 6px 0; }
     .card { border: 1px solid #ddd; padding: 12px; border-radius: 12px; margin: 12px 0; }
     button { margin-right: 4px; padding: 6px 10px; }
+    input[type="text"] { padding: 8px 10px; border-radius: 10px; border: 1px solid #ddd; width: 220px; }
     .small { color:#666; font-size: 12px; line-height: 1.4; }
     .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
     canvas { max-width: 100%; border: 1px solid #eee; border-radius: 12px; }
@@ -27,14 +28,27 @@
     .review-crop { width: 140px; height: auto; border-radius: 10px; border: 1px solid #eee; }
     .review-buttons button { margin: 2px 4px 2px 0; }
     .muted { opacity: 0.7; }
+
+    .answer-block { display:flex; align-items:center; gap:10px; margin: 10px 0; flex-wrap: wrap; }
+    .answer-label { width: 70px; font-weight: 800; }
+    .hint { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   </style>
 </head>
 <body>
 
-  <h2>1) 정답 입력 (25문항, 1~5)</h2>
+  <h2>1) 정답 입력 (5문항 단���)</h2>
   <div class="card">
-    <div class="small">각 문항의 정답을 1~5로 지정하세요.</div>
-    <div id="answerGrid"></div>
+    <div class="small">
+      각 줄에 <b>5자리 숫자(1~5)</b>를 입력하세요. 예: <span class="hint">23213</span><br/>
+      입력 즉시 아래 “현재 정답키”에 반영됩니다.
+    </div>
+
+    <div id="answerBlocks"></div>
+
+    <div class="small" style="margin-top:10px;">
+      현재 정답키: <span class="hint" id="answerKeyText">-</span>
+      <span id="answerKeyValid" class="small"></span>
+    </div>
   </div>
 
   <h2>2) 답안지 사진 업로드</h2>

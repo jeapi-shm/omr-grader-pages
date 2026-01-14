@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OMR 채점하기 (OCR)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    .card { border: 1px solid #ddd; padding: 14px; border-radius: 14px; margin: 12px 0; }
+    .small { color:#666; font-size: 12px; line-height: 1.5; }
+    button { padding: 10px 12px; border-radius: 12px; border: 1px solid #ddd; background:#fff; cursor:pointer; }
+    button:active { transform: translateY(1px); }
+    .row { display:flex; align-items:center; gap:10px; flex-wrap: wrap; }
+    .pill { display:inline-block; padding:2px 8px; border-radius: 999px; font-size: 12px; }
+    .ok { background:#e9fff6; color:#0a7; }
+    .warn { background:#fff4e8; color:#f60; }
+    .bad { background:#ffecec; color:#c33; }
+    img { max-width: 100%; border: 1px solid #eee; border-radius: 12px; }
+    .result-title { font-weight: 900; }
+    .muted { opacity: .75; }
+
+    .sa-grid { display:grid; grid-template-columns: 1fr; gap: 8px; margin-top: 10px; }
+    @media (min-width: 900px){ .sa-grid { grid-template-columns: 1fr 1fr; } }
+    .sa-item { border: 1px solid #eee; border-radius: 12px; padding: 10px; }
+    .sa-item b { display:inline-block; width: 26px; }
+    .good { color:#0a7; font-weight: 800; }
+    .badTxt { color:#c33; font-weight: 800; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  </style>
+</head>
+<body>
+  <div class="row" style="justify-content:space-between;">
+    <h2 style="margin:6px 0;">채점하기 (OCR)</h2>
+    <button onclick="location.href='./index.html'">정답 입력으로</button>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <div class="result-title">정답 불러오기</div>
+        <div class="small">index에서 저장한 정답(localStorage)을 사용합니다.</div>
+      </div>
+      <span id="keyStatus" class="pill warn">확인중…</span>
+      <button id="reloadKeyBtn">정답 다시 불러오기</button>
+    </div>
+
+    <div class="small" style="margin-top:8px;">
+      객관식 입력된 문항 수: <b id="mcKeyCount">0</b> / 30
+      <span class="muted">(입력된 문항만 O/X/V와 점수 계산)</span><br/>
+      주관식 입력된 문항 수: <b id="saKeyCount">0</b> / 10
+      <span class="muted">(입력된 문항만 OCR 결과와 비교)</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="result-title">답안지 사진 업로드</div>
+    <div class="small">
+      주관식 분수는 가능하면 <span class="mono">1/5</span> 처럼 가로로 작성하세요. (세로 분수도 일부 자동 보정됩니다)
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <input id="files" type="file" accept="image/*" multiple />
+      <button id="gradeBtn" disabled>채점 실행</button>
+      <span id="cvStatus" class="small">OpenCV 로딩 중…</span>
+      <span id="ocrStatus" class="small">OCR 로딩 중…</span>
+    </div>
+
+    <div class="small" style="margin-top:10px;">
+      OCR 허용 문자: <span class="mono">0-9 . /</span>
+      (분수 세로 작성 시 OCR이 <span class="mono">1 5</span> 또는 <span class="mono">1\n5</span>처럼 나오면 자동으로 <span class="mono">1/5</span>로 보정)
+    </div>
+  </div>
+
+  <div id="results"></div>
+
+  <script defer src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script defer src="./grade.js"></script>
+</body>
+</html>
